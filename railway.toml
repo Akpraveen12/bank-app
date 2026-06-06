@@ -1,0 +1,6 @@
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "java -jar target/bank-management-1.0.0.jar"
+healthcheckPath = "/api/stats"
