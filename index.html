@@ -320,7 +320,15 @@ body { font-family: 'DM Sans', sans-serif; background: var(--navy); color: var(-
 </div>
 
 <script>
-// ── STATE (all in memory, your Java logic ported to JS) ──
+const API = 'https://bank-app-production-741d.up.railway.app';
+
+async function apicall(method, path, body) {
+  const opts = { method, headers: {'Content-Type':'application/json'} };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(API + '/api' + path, opts);
+  return r.json();
+}
+
 let accounts = [];
 let transactions = [];
 
@@ -386,125 +394,116 @@ function txIcon(type) {
   return '●';
 }
 
-// ── ALL YOUR JAVA FEATURES PORTED ──
+// ── FEATURES — call Railway backend ──
 
-function createAccount() {
-  const no   = parseInt(document.getElementById('c-no').value);
+async function createAccount() {
+  const no = parseInt(document.getElementById('c-no').value);
   const name = document.getElementById('c-name').value.trim();
-  if (!no || no <= 0)       return res('c-res', 'Account number must be a positive number.', false);
-  if (!name)                return res('c-res', 'Name cannot be empty.', false);
-  if (name.includes('|'))   return res('c-res', "Name must not contain the '|' character.", false);
-  if (find(no))             return res('c-res', 'Account #' + no + ' already exists.', false);
-  accounts.push({ no, name, balance: 0 });
-  log('account', 'Account created: #' + no + ' (' + name + ')');
-  res('c-res', 'Account #' + no + ' created successfully for ' + name + '.', true);
-  document.getElementById('c-no').value = '';
-  document.getElementById('c-name').value = '';
-  renderDashboard();
+  try {
+    const r = await apicall('POST', '/accounts', {accountNumber: no, name});
+    res('c-res', r.message, r.success);
+    if (r.success) { document.getElementById('c-no').value=''; document.getElementById('c-name').value=''; loadDashboard(); }
+  } catch(e) { res('c-res', 'Could not connect to backend.', false); }
 }
 
-function deposit() {
-  const no  = parseInt(document.getElementById('dep-no').value);
+async function deposit() {
+  const no = parseInt(document.getElementById('dep-no').value);
   const amt = parseFloat(document.getElementById('dep-amt').value);
-  const acc = find(no);
-  if (!acc)        return res('dep-res', 'Account not found.', false);
-  if (!amt || amt <= 0) return res('dep-res', 'Amount must be greater than zero.', false);
-  acc.balance += amt;
-  log('deposit', fmt(amt) + ' deposited → #' + no + ' (' + acc.name + ')');
-  res('dep-res', 'Deposit successful. New balance: ' + fmt(acc.balance), true);
-  renderDashboard();
+  try {
+    const r = await apicall('POST', '/deposit', {accountNumber: no, amount: amt});
+    res('dep-res', r.message, r.success);
+    if (r.success) loadDashboard();
+  } catch(e) { res('dep-res', 'Could not connect to backend.', false); }
 }
 
-function withdraw() {
-  const no  = parseInt(document.getElementById('w-no').value);
+async function withdraw() {
+  const no = parseInt(document.getElementById('w-no').value);
   const amt = parseFloat(document.getElementById('w-amt').value);
-  const acc = find(no);
-  if (!acc)             return res('w-res', 'Account not found.', false);
-  if (!amt || amt <= 0) return res('w-res', 'Amount must be greater than zero.', false);
-  if (amt > acc.balance) return res('w-res', 'Insufficient balance. Available: ' + fmt(acc.balance), false);
-  acc.balance -= amt;
-  log('withdraw', fmt(amt) + ' withdrawn ← #' + no + ' (' + acc.name + ')');
-  res('w-res', 'Withdrawal successful. New balance: ' + fmt(acc.balance), true);
-  renderDashboard();
+  try {
+    const r = await apicall('POST', '/withdraw', {accountNumber: no, amount: amt});
+    res('w-res', r.message, r.success);
+    if (r.success) loadDashboard();
+  } catch(e) { res('w-res', 'Could not connect to backend.', false); }
 }
 
-function transfer() {
+async function transfer() {
   const from = parseInt(document.getElementById('tf-from').value);
-  const to   = parseInt(document.getElementById('tf-to').value);
-  const amt  = parseFloat(document.getElementById('tf-amt').value);
-  if (from === to)      return res('tf-res', 'Cannot transfer to the same account.', false);
-  const sender   = find(from);
-  const receiver = find(to);
-  if (!sender)          return res('tf-res', 'Sender account not found.', false);
-  if (!receiver)        return res('tf-res', 'Receiver account not found.', false);
-  if (!amt || amt <= 0) return res('tf-res', 'Amount must be greater than zero.', false);
-  if (amt > sender.balance) return res('tf-res', 'Insufficient balance. Available: ' + fmt(sender.balance), false);
-  sender.balance   -= amt;
-  receiver.balance += amt;
-  log('transfer', fmt(amt) + ' from #' + from + ' (' + sender.name + ') → #' + to + ' (' + receiver.name + ')');
-  res('tf-res', 'Transfer successful. ' + sender.name + ' → ' + receiver.name + ': ' + fmt(amt), true);
-  renderDashboard();
+  const to = parseInt(document.getElementById('tf-to').value);
+  const amt = parseFloat(document.getElementById('tf-amt').value);
+  try {
+    const r = await apicall('POST', '/transfer', {fromAccount: from, toAccount: to, amount: amt});
+    res('tf-res', r.message, r.success);
+    if (r.success) loadDashboard();
+  } catch(e) { res('tf-res', 'Could not connect to backend.', false); }
 }
 
-function checkBalance() {
-  const no  = parseInt(document.getElementById('b-no').value);
-  const acc = find(no);
-  if (!acc) return res('b-res', 'Account not found.', false);
-  res('b-res', acc.name + ' — Account #' + no + ' — Balance: ' + fmt(acc.balance), true);
+async function checkBalance() {
+  const no = parseInt(document.getElementById('b-no').value);
+  try {
+    const r = await apicall('GET', '/balance/' + no);
+    res('b-res', r.message, r.success);
+  } catch(e) { res('b-res', 'Could not connect to backend.', false); }
 }
 
-function deleteAccount() {
-  const no  = parseInt(document.getElementById('d-no').value);
-  const acc = find(no);
-  if (!acc) return res('d-res', 'Account not found.', false);
-  if (acc.balance > 0) return res('d-res', 'Account has balance of ' + fmt(acc.balance) + '. Withdraw before deleting.', false);
-  accounts = accounts.filter(a => a.no !== no);
-  log('account', 'Account deleted: #' + no + ' (' + acc.name + ')');
-  res('d-res', 'Account #' + no + ' deleted successfully.', true);
-  renderDashboard();
+async function deleteAccount() {
+  const no = parseInt(document.getElementById('d-no').value);
+  try {
+    const r = await apicall('DELETE', '/accounts/' + no);
+    res('d-res', r.message, r.success);
+    if (r.success) loadDashboard();
+  } catch(e) { res('d-res', 'Could not connect to backend.', false); }
 }
 
 // ── RENDER FUNCTIONS ──
 
-function renderDashboard() {
-  document.getElementById('s-accounts').textContent = accounts.length;
-  document.getElementById('s-balance').textContent  = fmt(accounts.reduce((s,a) => s + a.balance, 0));
-  document.getElementById('s-tx').textContent       = transactions.length;
-  updatePill();
-  const el = document.getElementById('dash-tx');
-  const recent = transactions.slice(0, 6);
-  el.innerHTML = recent.length ? recent.map(txRow).join('') : '<div class="empty">No transactions yet</div>';
+async function loadDashboard() {
+  try {
+    const stats = await apicall('GET', '/stats');
+    document.getElementById('s-accounts').textContent = stats.totalAccounts;
+    document.getElementById('s-balance').textContent = fmt(stats.totalBalance);
+    document.getElementById('s-tx').textContent = stats.totalTransactions;
+    document.getElementById('acc-pill').textContent = stats.totalAccounts + ' account' + (stats.totalAccounts !== 1 ? 's' : '');
+    const txs = await apicall('GET', '/transactions');
+    const el = document.getElementById('dash-tx');
+    el.innerHTML = txs.length ? txs.slice(0,6).map(txRow).join('') : '<div class="empty">No transactions yet</div>';
+  } catch(e) {}
 }
 
-function renderAllAccounts() {
-  const el = document.getElementById('all-list');
-  el.innerHTML = accounts.length ? accounts.map(a => `
-    <div class="acc-row">
-      <div class="acc-left">
-        <div class="acc-avatar">${initials(a.name)}</div>
-        <div>
-          <div class="acc-name">${a.name}</div>
-          <div class="acc-no">Account #${a.no}</div>
+async function renderAllAccounts() {
+  try {
+    const accs = await apicall('GET', '/accounts');
+    const el = document.getElementById('all-list');
+    el.innerHTML = accs.length ? accs.map(a => `
+      <div class="acc-row">
+        <div class="acc-left">
+          <div class="acc-avatar">${initials(a.name)}</div>
+          <div>
+            <div class="acc-name">${a.name}</div>
+            <div class="acc-no">Account #${a.accountNumber}</div>
+          </div>
         </div>
-      </div>
-      <div class="acc-balance">${fmt(a.balance)}</div>
-    </div>`).join('') : '<div class="empty">No accounts found</div>';
+        <div class="acc-balance">${fmt(a.balance)}</div>
+      </div>`).join('') : '<div class="empty">No accounts found</div>';
+  } catch(e) {}
 }
 
-function renderHistory() {
-  const el = document.getElementById('tx-list');
-  el.innerHTML = transactions.length ? transactions.map(txRow).join('') : '<div class="empty">No transactions yet</div>';
+async function renderHistory() {
+  try {
+    const txs = await apicall('GET', '/transactions');
+    const el = document.getElementById('tx-list');
+    el.innerHTML = txs.length ? txs.map(txRow).join('') : '<div class="empty">No transactions yet</div>';
+  } catch(e) {}
 }
 
 function txRow(tx) {
   return `<div class="tx-row">
-    <div class="tx-icon ${tx.type}">${txIcon(tx.type)}</div>
-    <div class="tx-desc">${tx.desc}</div>
-    <div class="tx-time">${tx.time}</div>
+    <div class="tx-icon ${tx.type || 'account'}">${txIcon(tx.type)}</div>
+    <div class="tx-desc">${tx.description || tx.desc}</div>
+    <div class="tx-time">${tx.timestamp || tx.time}</div>
   </div>`;
 }
 
-renderDashboard();
+loadDashboard();
 </script>
 </body>
 </html>
